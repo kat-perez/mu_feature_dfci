@@ -9,6 +9,115 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
 #include "SettingsManager.h"
+#include <Library/PcdLib.h>
+#include <Library/BaseLib.h>
+
+//
+// Setting IDs the dev-only PcdAcceptUnauthDeviceDisableSettings bypass
+// applies to. String literals (not macros) so this list is independent
+// of the Surface-side header. After DfciGroupLib alias resolution,
+// any `Device.*` or `Dfci.*` user-facing name resolves to one of the
+// IDs below before the permission check runs.
+//
+STATIC CONST CHAR8  *mDeviceDisableAllowlist[] = {
+  // Group IDs accepted directly in a settings packet
+  "Dfci.OnboardCameras.Enable",
+  "Dfci.OnboardAudio.Enable",
+  "Dfci.OnboardMic.Enable",
+  "Dfci.OnboardRadios.Enable",
+  "Dfci.AudioJackMic.Enable",
+  "Dfci.WiFiOnly.Enable",
+  "Dfci.WiFiAndBluetooth.Enable",
+  "Dfci.Bluetooth.Enable",
+  "Dfci.Nfc.Enable",
+  "Dfci.WiredLan.Enable",
+  "Dfci.MicroSDCard.Enable",
+  "Dfci.UltraWideband.Enable",
+  "Dfci.CAC.Enable",
+  "Dfci.DockingUsbPort.Enable",
+  "Dfci.BladeUsbPort.Enable",
+  "Dfci.AccessoryRadioUsbPort.Enable",
+  "Dfci.LteModemUsbPort.Enable",
+  // Dfci4 group IDs (groups after DfciGroupLib expansion still flow back
+  // through this function for each member, so they're listed too)
+  "Dfci4.FrontCamera.Enable",
+  "Dfci4.RearCamera.Enable",
+  "Dfci4.IRCamera.Enable",
+  "Dfci4.WFOVCamera.Enable",
+  "Dfci4.Microphone.Enable",
+  "Dfci4.Bluetooth.Enable",
+  "Dfci4.WiFi.Enable",
+  "Dfci4.Nfc.Enable",
+  "Dfci4.WWANEnable",
+  "Dfci4.UsbTypeAPort.Enable",
+  "Dfci4.UsbTypeCPort.Enable",
+  "Dfci4.Sdcard.Enable",
+  // Leaf provider IDs that the group expansion resolves to. These are the
+  // IDs `mSystemSettingAccessProtocol.Set` is actually invoked with after
+  // SetSettingFromAscii walks the group members.
+  "Device.FrontCamera.Enable",
+  "Device.RearCamera.Enable",
+  "Device.IRCamera.Enable",
+  "Device.WfovCamera.Enable",
+  "Device.AllCameras.Enable",
+  "Device.OnboardAudio.Enable",
+  "Device.OnboardMic.Enable",
+  "Device.AudioJackMic.Enable",
+  "Device.BlueTooth.Enable",
+  "Device.WiFiOnly.Enable",
+  "Device.WiFiAndBluetooth.Enable",
+  "Device.Nfc.Enable",
+  "Device.WiredLan.Enable",
+  "Device.Sdcard.Enable",
+  "Device.UltraWideband.Enable",
+  "Device.SmartCard.Enable",
+  "Device.LteModemUsbPort.Enable",
+  "Device.WakeOnLan.Enable",
+  "Device.WakeOnPower.Enable",
+  "Surface.AccessoryRadioUsbPort.Enable",
+  "Surface.BladeUsbPort.Enable",
+  "Surface.DockingUsbPort.Enable",
+  "Surface.UserUsbPort1.Enable",
+  "Surface.UserUsbPort2.Enable",
+  "Surface.UserUsbPort3.Enable",
+  "Surface.UserUsbPort4.Enable",
+  "Surface.UserUsbPort5.Enable",
+  "Surface.UserUsbPort6.Enable",
+  "Surface.UserUsbPort7.Enable",
+  "Surface.UserUsbPort8.Enable",
+  "Surface.UserUsbPort9.Enable",
+  "Surface.UserUsbPort10.Enable",
+  "Surface.UserUsbCPort1.Enable",
+  "Surface.UserUsbCPort2.Enable",
+  "Surface.UserUsbCPort3.Enable",
+  "Surface.UserUsbCPort4.Enable",
+  "Surface.UserUsbCPort5.Enable",
+  "Surface.UserUsbCPort6.Enable",
+  "Surface.UserUsbCPort7.Enable",
+  "Surface.UserUsbCPort8.Enable",
+  "Surface.UserUsbCPort9.Enable",
+  "Surface.UserUsbCPort10.Enable",
+};
+
+STATIC
+BOOLEAN
+IsDeviceDisableAllowlistedId (
+  IN DFCI_SETTING_ID_STRING  Id
+  )
+{
+  UINTN  i;
+
+  if (Id == NULL) {
+    return FALSE;
+  }
+
+  for (i = 0; i < ARRAY_SIZE (mDeviceDisableAllowlist); i++) {
+    if (AsciiStrCmp (Id, mDeviceDisableAllowlist[i]) == 0) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
 
 /*
 Set a single setting
@@ -90,17 +199,24 @@ InternalSystemSettingAccessSet (
     return ReturnStatus;
   }
 
-  // Check Auth for the setting Id.
-  Status = HasWritePermissions (Id, AuthToken, &AuthStatus);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "%a - HasWritePermissions returned an error %r\n", __FUNCTION__, Status));
-    return Status;
-  }
+  // Dev-only short-circuit: bypass the entire write-permission check
+  // (including any error or denial from HasWritePermissions) for
+  // device-disable setting IDs when the PCD is TRUE.
+  if (FeaturePcdGet (PcdAcceptUnauthDeviceDisableSettings) && IsDeviceDisableAllowlistedId (Id)) {
+    DEBUG ((DEBUG_WARN, "%a - PcdAcceptUnauthDeviceDisableSettings bypass: allowing %a\n", __FUNCTION__, Id));
+  } else {
+    // Check Auth for the setting Id.
+    Status = HasWritePermissions (Id, AuthToken, &AuthStatus);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "%a - HasWritePermissions returned an error %r\n", __FUNCTION__, Status));
+      return Status;
+    }
 
-  // if no write access to group ID return access denied
-  if (!AuthStatus) {
-    DEBUG ((DEBUG_INFO, "%a - No Permission to write setting %a\n", __FUNCTION__, Id));
-    return EFI_ACCESS_DENIED;
+    // if no write access to group ID return access denied
+    if (!AuthStatus) {
+      DEBUG ((DEBUG_INFO, "%a - No Permission to write setting %a\n", __FUNCTION__, Id));
+      return EFI_ACCESS_DENIED;
+    }
   }
 
   if (Type != prov->Type) {

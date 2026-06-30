@@ -68,6 +68,7 @@
 
 [FeaturePcd]
   gDfciPkgTokenSpaceGuid.PcdDfciEnabled
+  gDfciPkgTokenSpaceGuid.PcdAcceptUnauthDeviceDisableSettings
 
 [Pcd]
 

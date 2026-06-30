@@ -184,6 +184,15 @@
   #    3. The Zero Touch Certificate is not included in the ROM
   gDfciPkgTokenSpaceGuid.PcdDfciEnabled|TRUE|BOOLEAN|0x40000015
 
+  ## Dev-only bypass that lets device-disable setting IDs be written
+  ## without DFCI write-permission auth. When TRUE, SettingsManager
+  ## accepts writes to the device-disable allowlist
+  ## (Dfci/Dfci4/Device.* camera, mic, audio, wifi/bt, NFC, USB ports,
+  ## LAN, UWB, smart card, SD) regardless of the caller's identity.
+  ## All other settings still enforce normal permission checks.
+  ## Default FALSE; production must NOT ship with this TRUE.
+  gDfciPkgTokenSpaceGuid.PcdAcceptUnauthDeviceDisableSettings|FALSE|BOOLEAN|0x4000001C
+
 [PcdsFixedAtBuild]
   ## FFS filename to find the DFCI Timer BMP file,
   # {717f2543-3bb6-4f9d-a6fc-58e8a78dbd27}
