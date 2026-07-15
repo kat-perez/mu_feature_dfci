@@ -864,6 +864,17 @@ ProcessMailBoxes (
 
   DEBUG ((DEBUG_INFO, "%a %a: ProcessMailboxes Entry\n", _DBGMSGID_, __FUNCTION__));
 
+  // Skip if the mailboxes were already processed and freed this boot.
+  // FreeManagerData() on the normal exit below NULLs every mManagerData[].Data,
+  // and the helpers here dereference MgrData->Data without a NULL check, so a
+  // re-entry after completion would fault. The delayed-processing path keeps
+  // Data allocated (EARLY_EXIT does not free), so a legitimate re-run is
+  // unaffected.
+  if (mManagerData[MGR_IDENTITY].Data == NULL) {
+    DEBUG ((DEBUG_INFO, "%a %a: Manager data already processed; skipping.\n", _DBGMSGID_, __FUNCTION__));
+    return EFI_SUCCESS;
+  }
+
   // Process all packets in this order.  If any identity packet state is set to
   // DFCI_PACKET_STATE_DATA_DELAYED_PROCESSING, ProcessPacket will register an EndOfDxe
   // handler and return EFI_MEDIA_CHANGED.
