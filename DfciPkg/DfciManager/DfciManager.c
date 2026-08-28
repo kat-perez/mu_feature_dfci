@@ -864,15 +864,22 @@ ProcessMailBoxes (
 
   DEBUG ((DEBUG_INFO, "%a %a: ProcessMailboxes Entry\n", _DBGMSGID_, __FUNCTION__));
 
-  // Skip if the mailboxes were already processed and freed this boot.
-  // FreeManagerData() on the normal exit below NULLs every mManagerData[].Data.
-  // ProcessPacket NULL-checks its input, but the unenroll checks in this
-  // function dereference MgrData->Data->Unenroll directly, so a re-entry
-  // after completion would fault there. The delayed-processing path keeps
-  // Data allocated (EARLY_EXIT does not free), so a legitimate re-run is
-  // unaffected.
+  // mManagerData[MGR_IDENTITY].Data is non-NULL after InitializePacket and is set
+  // to NULL only by FreeManagerData(), which runs on the normal completion path
+  // below and on the entry error path. The delayed-processing path exits via
+  // EARLY_EXIT and does not free. Data == NULL here therefore indicates a re-entry
+  // after completion, which occurs when SettingsAccess is installed after EndOfDxe
+  // has already processed and freed the mailboxes (DFCI StartOfBds signaled after
+  // EndOfDxe). Continuing would dereference the freed MgrData->Data->Unenroll below.
   if (mManagerData[MGR_IDENTITY].Data == NULL) {
-    DEBUG ((DEBUG_INFO, "%a %a: Manager data already processed; skipping.\n", _DBGMSGID_, __FUNCTION__));
+    DEBUG ((
+      DEBUG_ERROR,
+      "%a %a: Re-entered after completion; SettingsAccess installed after EndOfDxe. "
+      "DFCI StartOfBds must be signaled before EndOfDxe.\n",
+      _DBGMSGID_,
+      __FUNCTION__
+      ));
+    ASSERT (FALSE);
     return EFI_SUCCESS;
   }
 
